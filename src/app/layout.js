@@ -5,6 +5,7 @@ import { ToastProvider } from "@/providers/ToastProvider";
 import { CartProvider } from "@/providers/CartProvider";
 import { ComparisonProvider } from "@/providers/ComparisonProvider";
 import { TransactionProvider } from "@/providers/TransactionProvider";
+import ReducedMotionProvider from "@/components/ReducedMotionProvider";
 import CartDrawer from "@/components/CartDrawer";
 import ComparisonMatrix from "@/components/ComparisonMatrix";
 import CompareTray from "@/components/CompareTray";
@@ -61,21 +62,23 @@ export default function RootLayout({ children }) {
           Skip to main content
         </a>
         <RouteFocusManager />
-        <WalletProvider>
-          <ToastProvider>
-            <SessionExpiredModal />
-            <CartProvider>
-              <ComparisonProvider>
-                <TransactionProvider>
-                  {children}
-                  <CartDrawer />
-                  <CompareTray />
-                  <ComparisonMatrix />
-                </TransactionProvider>
-              </ComparisonProvider>
-            </CartProvider>
-          </ToastProvider>
-        </WalletProvider>
+        <ReducedMotionProvider>
+          <WalletProvider>
+            <ToastProvider>
+              <SessionExpiredModal />
+              <CartProvider>
+                <ComparisonProvider>
+                  <TransactionProvider>
+                    {children}
+                    <CartDrawer />
+                    <CompareTray />
+                    <ComparisonMatrix />
+                  </TransactionProvider>
+                </ComparisonProvider>
+              </CartProvider>
+            </ToastProvider>
+          </WalletProvider>
+        </ReducedMotionProvider>
       </body>
     </html>
   );
