@@ -36,4 +36,8 @@ export const queryKeys = {
     all: ['admin'],
     moderation: () => ['admin', 'moderation'],
   },
+  transactions: {
+    all: ['transactions'],
+    history: (params) => (params ? ['transactions', 'history', params] : ['transactions', 'history']),
+  },
 };

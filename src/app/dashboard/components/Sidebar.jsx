@@ -16,6 +16,7 @@ import {
 	FaWallet,
 	FaRocket,
 	FaGraduationCap,
+	FaExchangeAlt,
 } from "react-icons/fa";
 
 export default function Sidebar() {
@@ -35,6 +36,7 @@ export default function Sidebar() {
 
 	const financeItems = [
 		{ icon: <FaDollarSign />, label: "Earnings", href: "/dashboard/earnings" },
+		{ icon: <FaExchangeAlt />, label: "Transactions", href: "/dashboard/transactions" },
 		{ icon: <FaWallet />, label: "Payout Settings", href: "/dashboard/settings" },
 	];
 
