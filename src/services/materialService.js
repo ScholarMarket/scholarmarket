@@ -28,7 +28,7 @@ export const materialService = {
   },
 
   uploadFile: async (formData) => {
-    return apiClient('/api/upload', { 
+    return apiClient('/api/materials/upload', { 
       body: formData,
       headers: { 'Content-Type': undefined },
       method: 'POST'
