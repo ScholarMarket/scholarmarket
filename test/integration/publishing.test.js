@@ -1,6 +1,14 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mockCollections } from '../setup';
 import { users, materials } from '../fixtures';
+
+// Transaction persistence is verified against MongoDB in creatorFollows.test.js.
+vi.mock('@/lib/backend/creatorFollows', () => ({
+    publishWithFollowers: async (db, material, updates) => {
+        const result = await db.collection('materials').updateOne({ _id: material._id }, { $set: updates });
+        return result.modifiedCount > 0;
+    },
+}));
 
 // Assuming standard Next.js Route handlers export GET/POST
 import { POST as CreateMaterial } from '../../src/app/api/materials/route.js';

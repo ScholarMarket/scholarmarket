@@ -78,7 +78,10 @@ let indexesCreated = false;
 
 async function ensureIndexes(db) {
   try {
+    await db.collection("follows").createIndex({ follower: 1, creator: 1 }, { unique: true, name: "follows_pair_idx" });
+    await db.collection("follows").createIndex({ creator: 1, _id: 1 }, { name: "follows_creator_idx" });
     const materials = db.collection("materials");
+    await materials.createIndex({ status: 1, deletedAt: 1, publishedAt: -1, _id: -1 }, { name: "materials_following_feed_idx" });
     const purchases = db.collection("purchases");
     const users = db.collection("users");
     const outbox = db.collection("side_effect_outbox");
@@ -87,6 +90,8 @@ async function ensureIndexes(db) {
     const featureFlags = db.collection("feature_flags");
 
     await featureFlags.createIndex({ key: 1 }, { name: "feature_flags_key_idx", unique: true, background: true });
+
+    await materials.createIndex({ deletedAt: 1 }, { name: "materials_deletedAt_idx", background: true });
 
     await materials.createIndex(
       { category: 1, price: 1 },

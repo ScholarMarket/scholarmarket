@@ -64,7 +64,7 @@ export async function GET(req, { params }) {
       if (!hasAccess) {
         // Free public materials
         const price = Number(material.price || 0);
-        if (price <= 0 && material.visibility === "public") {
+        if (!material.deletedAt && price <= 0 && material.visibility === "public") {
           hasAccess = true;
           accessSource = "free-public";
         } else {

@@ -81,6 +81,7 @@ function buildContentTypeQuery(value) {
 export function buildMarketplaceDiscoveryQuery(searchParams, { now = new Date() } = {}) {
   const query = {
     visibility: "public",
+    deletedAt: null,
     $or: [
       { relevanceStatus: { $exists: false } },
       { relevanceStatus: { $ne: "low" } },

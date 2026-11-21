@@ -136,6 +136,14 @@ export async function GET(request) {
         }
 
         const db = await getDb();
+        const items = await db
+          .collection("materials")
+          .find({ userAddress, deletedAt: null })
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        const normalized = items.map(sanitizeMaterial);
+        await cacheSet(cacheKey, normalized, 60);
         const page = await paginate({
           collection: db.collection("materials"),
           filter: { userAddress },
@@ -220,7 +228,7 @@ export async function PUT(request) {
         const userAddress = user.walletAddress || user.address || user.id;
 
         const existing = await db.collection("materials").findOne({ _id: new ObjectId(materialId) });
-        if (!existing) {
+        if (!existing || existing.deletedAt) {
           return NextResponse.json({ error: "Material not found" }, { status: 404 });
         }
 
@@ -269,14 +277,14 @@ export async function PUT(request) {
 /**
  * DELETE /api/materials?id=<materialId>
  *
- * Permanently delete a material. Only the material owner can delete.
+ * Soft delete a material. Only the material owner can delete.
  *
  * @swagger
  * /api/materials:
  *   delete:
  *     summary: Delete a material
  *     tags: [Materials]
- *     description: Permanently deletes a material owned by the authenticated user.
+ *     description: Soft deletes a material owned by the authenticated user.
  *     parameters:
  *       - name: id
  *         in: query
@@ -317,7 +325,7 @@ export async function DELETE(request) {
         const userAddress = user.walletAddress || user.address || user.id;
 
         const existing = await db.collection("materials").findOne({ _id: new ObjectId(materialId) });
-        if (!existing) {
+        if (!existing || existing.deletedAt) {
           return NextResponse.json({ error: "Material not found" }, { status: 404 });
         }
 
@@ -326,7 +334,10 @@ export async function DELETE(request) {
           return NextResponse.json({ error: "Forbidden: not the material owner" }, { status: 403 });
         }
 
-        await db.collection("materials").deleteOne({ _id: new ObjectId(materialId) });
+        await db.collection("materials").updateOne(
+          { _id: new ObjectId(materialId), deletedAt: null },
+          { $set: { deletedAt: new Date(), deletedBy: userAddress } }
+        );
         await invalidateMarketplaceCache();
 
         auditLog({ event: "material_deleted", route: "materials", method: "DELETE", status: 200, actor: user.sub, materialId });

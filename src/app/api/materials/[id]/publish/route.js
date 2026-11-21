@@ -8,6 +8,9 @@ import {
   validatePublishRequest,
   getPublishingChecklist,
 } from "@/lib/publishing/checklist";
+import { ObjectId } from "mongodb";
+import { publishWithFollowers } from "@/lib/backend/creatorFollows";
+import { invalidateMarketplaceCache } from "@/lib/cache/redis";
 import { logger } from "@/lib/logger";
 
 /**
@@ -20,7 +23,7 @@ import { logger } from "@/lib/logger";
  */
 export async function POST(request, { params }) {
   try {
-    const materialId = params?.id;
+    const materialId = (await params)?.id;
     if (!materialId) {
       return NextResponse.json({ error: "Material not found" }, { status: 404 });
     }
@@ -40,7 +43,7 @@ export async function POST(request, { params }) {
 
     // ── Resolve material ──────────────────────────────────────────────────
     const db = await getDb();
-    const material = await db.collection("materials").findOne({ _id: materialId });
+    const material = await db.collection("materials").findOne({ _id: ObjectId.isValid(materialId) ? new ObjectId(materialId) : materialId, deletedAt: null });
     if (!material) {
       auditLog({ event: "publish_not_found", route: "material-publish", method: "POST", status: 404, materialId });
       return NextResponse.json({ error: "Material not found" }, { status: 404 });
@@ -101,10 +104,11 @@ export async function POST(request, { params }) {
       updatePayload.contractId = contractId;
     }
 
-    await db.collection("materials").updateOne(
-      { _id: materialId },
-      { $set: updatePayload }
-    );
+    const published = await publishWithFollowers(db, material, updatePayload);
+    if (!published) {
+      return NextResponse.json({ error: "Material changed; reload before publishing" }, { status: 409 });
+    }
+    await invalidateMarketplaceCache();
 
     auditLog({
       event: "publish_success",
@@ -137,7 +141,7 @@ export async function POST(request, { params }) {
  */
 export async function GET(request, { params }) {
   try {
-    const materialId = params?.id;
+    const materialId = (await params)?.id;
     if (!materialId) {
       return NextResponse.json({ error: "Material not found" }, { status: 404 });
     }
@@ -153,7 +157,7 @@ export async function GET(request, { params }) {
     }
 
     const db = await getDb();
-    const material = await db.collection("materials").findOne({ _id: materialId });
+    const material = await db.collection("materials").findOne({ _id: ObjectId.isValid(materialId) ? new ObjectId(materialId) : materialId, deletedAt: null });
 
     // Return checklist even if material not found (shows all fields as missing)
     const checklist = getPublishingChecklist(material);

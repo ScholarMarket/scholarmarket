@@ -1,45 +1,29 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 
-/**
- * Generate mock data points for the requested interval.
- */
-const generateMock = (interval) => {
-  const points = [];
-  const now = new Date();
-  const days = interval === '7d' ? 7 : interval === '30d' ? 30 : 365; // YTD approximated as 365 days
-  for (let i = days - 1; i >= 0; i--) {
-    const date = new Date(now);
-    date.setDate(now.getDate() - i);
-    // Mock values – you can replace with realistic distribution.
-    const earnings = Math.round(500 + Math.random() * 1500);
-    const gas = Math.round(50 + Math.random() * 200);
-    const royalties = Math.round(200 + Math.random() * 800);
-    points.push({
-      date: date.toISOString().split('T')[0], // YYYY-MM-DD
-      earnings,
-      gas,
-      royalties,
-      net: earnings - gas - royalties,
-    });
-  }
-  return points;
-};
-
-/**
- * useEarningsData – hook that returns earnings data for the selected interval.
- * In a real implementation this would fetch from the backend.
- *
- * @param {'7d' | '30d' | 'ytd'} interval - The time interval to generate data for.
- * @returns {Array<{ date: string, earnings: number, gas: number, royalties: number, net: number }>} An array of daily earnings data points.
- */
+/** Fetch creator analytics for an inclusive UTC calendar range. */
 export default function useEarningsData(interval) {
-  const [data, setData] = useState([]);
-
+  const [state, setState] = useState({ data: null, isLoading: true, error: null });
   useEffect(() => {
-    const mock = generateMock(interval);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setData(mock);
+    const controller = new AbortController();
+    const to = new Date();
+    const from = new Date(to);
+    from.setUTCHours(0, 0, 0, 0);
+    if (interval === "ytd") from.setUTCMonth(0, 1);
+    else from.setUTCDate(from.getUTCDate() - (interval === "30d" ? 29 : 6));
+    const params = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
+    setState({ data: null, isLoading: true, error: null });
+    async function load() {
+      try {
+        const response = await fetch(new URL(`/api/creator/analytics?${params}`, window.location.origin), { signal: controller.signal });
+        if (!response.ok) throw new Error("Unable to load earnings");
+        const data = await response.json();
+        if (!controller.signal.aborted) setState({ data, isLoading: false, error: null });
+      } catch (error) {
+        if (!controller.signal.aborted) setState({ data: null, isLoading: false, error: error.message });
+      }
+    }
+    load();
+    return () => controller.abort();
   }, [interval]);
-
-  return data;
+  return state;
 }

@@ -105,7 +105,8 @@ export async function GET(request) {
     });
 
     const exists = !!user;
-    return NextResponse.json({ exists, user: user || null });
+    const followerCount = await db.collection("follows").countDocuments({ creator: addressLower });
+    return NextResponse.json({ exists, user: user ? { ...user, followerCount } : null, followerCount });
   } catch (error) {
     if (error.name === "ValidationError") throw error;
     auditLog({ event: "profile_lookup_failed", route: "profile", method: "GET", status: 500, reason: error.message });

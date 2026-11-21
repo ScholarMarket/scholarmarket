@@ -1,0 +1,8 @@
+.earnings-analytics { display: grid; gap: 1rem; }
+.interval-selector { display: flex; flex-wrap: wrap; gap: .5rem; }
+.interval-btn { padding: .5rem 1rem; border: 1px solid #d1d5db; border-radius: .5rem; }
+.interval-btn.active { color: white; background: #2563eb; border-color: #2563eb; }
+.interval-btn:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.earnings-analytics dl { display: grid; grid-template-columns: auto 1fr; gap: .5rem 1rem; }
+.earnings-analytics dd { margin: 0; font-variant-numeric: tabular-nums; }
+.earnings-canvas { max-width: 100%; }

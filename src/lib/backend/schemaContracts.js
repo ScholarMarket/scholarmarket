@@ -17,11 +17,16 @@ export const COLLECTIONS = {
 };
 
 export const REQUIRED_INDEXES = {
+  follows: [
+    { keys: { follower: 1, creator: 1 }, options: { unique: true, name: "follows_pair_idx" } },
+    { keys: { creator: 1, _id: 1 }, options: { name: "follows_creator_idx" } },
+  ],
   users: [
     { keys: { email: 1 }, options: { unique: true } },
     { keys: { walletAddressLower: 1 }, options: { sparse: true } },
   ],
   materials: [
+    { keys: { deletedAt: 1 }, options: { name: "materials_deletedAt_idx" } },
     { keys: { userAddress: 1, createdAt: -1 } },
     { keys: { userAddress: 1, createdAt: -1, _id: -1 } },
     { keys: { visibility: 1, createdAt: -1 } },

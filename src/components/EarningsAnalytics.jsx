@@ -1,132 +1,62 @@
-import { useEffect, useRef, useState } from 'react';
-import Script from 'next/script';
-import useEarningsData from '../hooks/useEarningsData';
-import './EarningsAnalytics.css';
+"use client";
 
-/**
- * EarningsAnalytics – component that renders interval selectors and an earnings chart.
- * It uses Chart.js loaded from a CDN (no npm install required).
- */
+import { useEffect, useRef, useState } from "react";
+import Script from "next/script";
+import useEarningsData from "../hooks/useEarningsData";
+import "./EarningsAnalytics.css";
+
+const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 7 });
+const number = new Intl.NumberFormat("en-US", { maximumFractionDigits: 7 });
+
 export default function EarningsAnalytics() {
-  const intervals = [
-    { label: '7 Days', value: '7d' },
-    { label: '30 Days', value: '30d' },
-    { label: 'Year‑to‑Date', value: 'ytd' },
-  ];
-  const [selected, setSelected] = useState('7d');
-  const data = useEarningsData(selected);
-
+  const [selected, setSelected] = useState("7d");
+  const [chartReady, setChartReady] = useState(false);
+  const { data, isLoading, error } = useEarningsData(selected);
+  const points = data?.chartData || [];
   return (
-    <section className="earnings-analytics">
-      {/* Load Chart.js from CDN */}
-      <Script
-        src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
-        strategy="lazyOnload"
-      />
-      <div className="interval-selector" role="radiogroup" aria-label="Time interval">
-        {intervals.map(i => (
-          <button
-            key={i.value}
-            className={`interval-btn ${selected === i.value ? 'active' : ''}`}
-            onClick={() => setSelected(i.value)}
-            aria-pressed={selected === i.value}
-          >
-            {i.label}
+    <section className="earnings-analytics" aria-label="Earnings analytics">
+      <Script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
+        strategy="lazyOnload" onReady={() => setChartReady(true)} />
+      <div className="interval-selector" role="group" aria-label="Time interval">
+        {[{ label: "7 Days", value: "7d" }, { label: "30 Days", value: "30d" }, { label: "Year-to-Date", value: "ytd" }].map(interval => (
+          <button key={interval.value} className={`interval-btn ${selected === interval.value ? "active" : ""}`}
+            onClick={() => setSelected(interval.value)} aria-pressed={selected === interval.value}>
+            {interval.label}
           </button>
         ))}
       </div>
-      <Chart data={data} />
+      {isLoading ? <p role="status">Loading earnings...</p>
+        : error ? <p role="alert">{error}</p>
+          : <>
+            <dl>
+              <dt>Total revenue</dt><dd>{currency.format(data?.totalRevenue ?? 0)}</dd>
+              <dt>Total sales</dt><dd>{number.format(data?.totalSales ?? 0)}</dd>
+            </dl>
+            {points.some(point => Number(point.revenue) !== 0 || Number(point.orders) !== 0)
+              ? <Chart data={points} ready={chartReady} />
+              : <p role="status">No earnings for this period.</p>}
+          </>}
     </section>
   );
 }
 
-/**
- * Chart – renders a line chart using Chart.js.
- * It waits for the Chart.js script to be available on the window object.
- */
-function Chart({ data }) {
+function Chart({ data, ready }) {
   const canvasRef = useRef(null);
-  const chartRef = useRef(null);
-
   useEffect(() => {
-    if (!window.Chart) return; // script not loaded yet
-    const ctx = canvasRef.current.getContext('2d');
-
-    // Destroy previous chart instance if exists
-    if (chartRef.current) {
-      chartRef.current.destroy();
-    }
-
-    const labels = data.map(d => d.date);
-    const earnings = data.map(d => d.earnings);
-    const gas = data.map(d => d.gas);
-    const royalties = data.map(d => d.royalties);
-    const net = data.map(d => d.net);
-
-    chartRef.current = new window.Chart(ctx, {
-      type: 'line',
+    if (!ready || !window.Chart) return;
+    const chart = new window.Chart(canvasRef.current.getContext("2d"), {
+      type: "line",
       data: {
-        labels,
-        datasets: [
-          {
-            label: 'Earnings',
-            data: earnings,
-            borderColor: '#4caf50',
-            backgroundColor: 'rgba(76, 175, 80, 0.2)',
-            tension: 0.3,
-          },
-          {
-            label: 'Gas Costs',
-            data: gas,
-            borderColor: '#ff9800',
-            backgroundColor: 'rgba(255, 152, 0, 0.2)',
-            tension: 0.3,
-          },
-          {
-            label: 'Royalties',
-            data: royalties,
-            borderColor: '#2196f3',
-            backgroundColor: 'rgba(33, 150, 243, 0.2)',
-            tension: 0.3,
-          },
-          {
-            label: 'Net',
-            data: net,
-            borderColor: '#9c27b0',
-            backgroundColor: 'rgba(156, 39, 176, 0.2)',
-            tension: 0.3,
-          },
-        ],
+        labels: data.map(point => point.day),
+        datasets: [{ label: "Revenue", data: data.map(point => point.revenue), borderColor: "#4caf50", tension: 0.3 }],
       },
       options: {
         responsive: true,
-        plugins: {
-          tooltip: {
-            mode: 'index',
-            intersect: false,
-          },
-          legend: {
-            position: 'top',
-          },
-        },
-        interaction: {
-          mode: 'nearest',
-          axis: 'x',
-          intersect: false,
-        },
-        scales: {
-          x: {
-            display: true,
-            title: { display: true, text: 'Date' },
-          },
-          y: {
-            display: true,
-            title: { display: true, text: 'Amount (USD)' },
-          },
-        },
+        plugins: { tooltip: { callbacks: { label: context => currency.format(context.parsed.y) } } },
+        scales: { y: { title: { display: true, text: "Amount (USD)" } } },
       },
     });
-  }, [data]);
-
-  return <canvas ref={canvasRef} className="earnings-canvas" />;
+    return () => chart.destroy();
+  }, [data, ready]);
+  return <canvas ref={canvasRef} className="earnings-canvas" role="img" aria-label="Revenue by day" />;
 }

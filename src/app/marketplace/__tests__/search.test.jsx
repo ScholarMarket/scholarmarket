@@ -1,0 +1,31 @@
+import React from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+const state = vi.hoisted(() => ({ params: new URLSearchParams(), replace: vi.fn() }));
+vi.mock("@/hooks/useUrlState", () => ({ useUrlState: () => ({ searchParams: state.params, replaceState: state.replace }) }));
+vi.mock("@/hooks/useCart", () => ({ useCart: () => ({ cartItems: [], addToCart: vi.fn() }) }));
+vi.mock("@/hooks/useComparison", () => ({ useComparison: () => ({ comparedItems: [], addToComparison: vi.fn() }) }));
+vi.mock("@/hooks/api/useMaterials", () => ({ useMarketplaceMaterials: () => ({ data: { items: [{ _id: "1", title: "Calculus Notes", description: "Learn calc", price: 1 }], total: 1 }, isLoading: false }) }));
+vi.mock("next/image", () => ({ default: () => null }));
+vi.mock("next/link", () => ({ default: ({ children, href }) => <a href={href}>{children}</a> }));
+vi.mock("framer-motion", () => ({ motion: { div: ({ children, initial, animate, transition, ...props }) => <div {...props}>{children}</div> } }));
+vi.mock("@/components/Navbar", () => ({ default: () => null }));
+vi.mock("@/components/ScrollToTop", () => ({ default: () => null }));
+vi.mock("@/components/materials/RecentlyViewedMaterials", () => ({ default: () => null }));
+vi.mock("@/components/materials/SaveMaterialButton", () => ({ default: () => null }));
+import MarketPage from "../page";
+beforeEach(() => { vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ subjects: ["Math"] }) })); });
+describe("marketplace search integration", () => {
+  it("focuses with slash, highlights titles and descriptions, clears on Escape and announces results", () => {
+    const { container } = render(<MarketPage />);
+    fireEvent.keyDown(window, { key: "/" });
+    const search = screen.getByRole("textbox", { name: "Search materials" });
+    expect(search).toHaveFocus();
+    fireEvent.change(search, { target: { value: "calc" } });
+    expect([...container.querySelectorAll("mark")].map(mark => mark.textContent)).toEqual(["Calc", "calc"]);
+    expect(screen.getByRole("status")).toHaveTextContent("1 results");
+    fireEvent.keyDown(search, { key: "Escape" });
+    expect(search).toHaveValue("");
+    expect(container.querySelector("mark")).toBeNull();
+  });
+});

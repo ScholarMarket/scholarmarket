@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -23,6 +23,8 @@ import {
 } from "react-icons/fa";
 import { motion } from "framer-motion";
 
+import HighlightedText from "@/components/HighlightedText";
+import useSearchShortcut from "@/hooks/useSearchShortcut";
 import Navbar from "@/components/Navbar";
 import ScrollToTop from "@/components/ScrollToTop";
 import Pagination from "@/components/ui/Pagination";
@@ -121,6 +123,9 @@ export default function MarketPage() {
   const { addToCart, cartItems } = useCart();
   const { addToComparison, comparedItems } = useComparison();
   const { searchParams, replaceState } = useUrlState();
+
+  const searchRef = useRef(null);
+  useSearchShortcut(searchRef);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
@@ -418,13 +423,26 @@ export default function MarketPage() {
 
           <RecentlyViewedMaterials />
 
+          <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+            {isLoading ? "Searching materials" : isError ? "Search failed" : `${data?.total || 0} results`}
+          </p>
+
           <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-8 flex flex-col md:flex-row gap-4 items-center justify-between">
             <div className="relative w-full md:max-w-md">
               <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
                 placeholder="Search materials..."
+                ref={searchRef}
+                aria-keyshortcuts="/"
                 aria-label="Search materials"
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    setSearchQuery("");
+                    setCurrentPage(1);
+                    setShowSuggestions(false);
+                  }
+                }}
                 value={searchQuery}
                 onChange={(event) => {
                   setSearchQuery(event.target.value);
@@ -661,7 +679,7 @@ export default function MarketPage() {
                       <div className="p-4 flex-1 flex flex-col gap-2">
                         <Link href={`/marketplace/${materialId}`}>
                           <h3 className="text-sm font-bold text-gray-900 line-clamp-2 leading-snug hover:text-blue-600 transition-colors">
-                            {material.title}
+                            <HighlightedText text={material.title} query={searchQuery} />
                           </h3>
                         </Link>
 
@@ -672,7 +690,7 @@ export default function MarketPage() {
                         <ResourceStatusBadge material={material} max={3} />
 
                         <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed">
-                          {material.shortSummary || material.description || "No description"}
+                          <HighlightedText text={material.shortSummary || material.description || "No description"} query={searchQuery} />
                         </p>
 
                         <div className="mt-auto pt-3 border-t border-gray-100 space-y-3">

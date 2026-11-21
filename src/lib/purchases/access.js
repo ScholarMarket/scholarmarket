@@ -47,7 +47,7 @@ function isOwner(material, buyerAddress) {
 
 function isFreePublicMaterial(material) {
   const price = Number(material?.price || 0);
-  return price <= 0 && material?.visibility === "public";
+  return !material?.deletedAt && price <= 0 && material?.visibility === "public";
 }
 
 export async function getMaterialAccessStatus(db, materialId, buyerAddress) {

@@ -668,6 +668,81 @@ components:
             $ref: "#/components/schemas/Error"
 
 paths:
+
+  /api/admin/materials/{id}/restore:
+    post:
+      tags: [Materials]
+      summary: Restore a soft-deleted material within 30 days
+      description: Requires an admin session. Retains existing buyer entitlements and invalidates discovery caches.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Material restored }
+        '400': { description: Invalid material ID }
+        '403': { description: Admin access required }
+        '404': { description: No deletion within the 30-day restore window }
+  /api/creators/{address}/follow:
+    parameters:
+      - name: address
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Creators]
+      summary: Follow a creator idempotently
+      description: Requires a wallet session, rejects self follows, and allows 30 requests per minute.
+      responses:
+        '200':
+          description: Follow status and follower count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  following: { type: boolean }
+                  followerCount: { type: integer }
+        '400': { description: Invalid address or self follow }
+        '401': { description: Authentication required }
+        '404': { description: Creator not found }
+        '429': { description: Rate limit exceeded }
+    delete:
+      tags: [Creators]
+      summary: Unfollow a creator idempotently
+      description: Requires a wallet session and allows 30 requests per minute.
+      responses:
+        '200': { description: Follow status and follower count }
+        '401': { description: Authentication required }
+        '429': { description: Rate limit exceeded }
+  /api/following/feed:
+    get:
+      tags: [Creators]
+      summary: Browse published public materials from followed creators
+      parameters:
+        - name: cursor
+          in: query
+          description: Opaque nextCursor from the previous response
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: Materials ordered by publication date and ID, excluding soft-deleted listings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { type: object }
+                  nextCursor: { type: [string, 'null'] }
+        '400': { description: Invalid cursor }
+        '401': { description: Authentication required }
+        '429': { description: Rate limit exceeded }
   # ---------------------------------------------------------------------------
   # Materials CRUD
   # ---------------------------------------------------------------------------

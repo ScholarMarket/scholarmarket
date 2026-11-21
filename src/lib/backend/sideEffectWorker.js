@@ -5,6 +5,7 @@
  * side effects with leased execution, bounded retries, and dead-letter handling.
  */
 
+import { fanoutCreatorPublication, deliverCreatorNotification } from './creatorFollows.js';
 import { getDb } from '@/lib/mongodb';
 import { logger } from '@/lib/logger';
 import {
@@ -93,6 +94,12 @@ export async function processSideEffectIntent(intent) {
   const type = intent.intent?.type;
 
   switch (type) {
+    case 'creator_publication':
+      await fanoutCreatorPublication(await getDb(), intent.intent.payload);
+      break;
+    case 'creator_notification':
+      await deliverCreatorNotification(await getDb(), intent.intent.payload);
+      break;
     case 'email':
       await processEmailIntent(intent);
       break;
