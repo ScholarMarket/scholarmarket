@@ -1,18 +1,101 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
-import { FaTimes } from "react-icons/fa";
+import { FaExclamationTriangle, FaTimes } from "react-icons/fa";
 import { useWallet } from "@/hooks/useWallet";
 import CheckoutReceiptModal from "../../../../../components/modals/CheckoutReceiptModal";
 import ConnectWalletModal from "./ConnectWalletModal";
 import TransactionStatusPanel from "@/components/transactions/TransactionStatusPanel";
 import { useCreatePurchase, useStartAccessRequest } from "@/hooks/api/usePurchases";
-import { ACCEPTED_ASSET, getExplorerTxUrl } from "@/lib/config/chain";
+import { ACCEPTED_ASSET, NATIVE_ASSET, getExplorerTxUrl } from "@/lib/config/chain";
 import { TransactionStatus } from "@/lib/transactions/transaction";
 import { useTransactionCenter } from "@/providers/TransactionProvider";
 import { useStellarTransaction } from "@/hooks/useStellarTransaction";
+import { fetchBalances, findAssetBalance } from "@/lib/wallet/balance";
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+/**
+ * Stellar accounts must hold a minimum base reserve.  The current network
+ * value is 1 XLM for the base account entry plus 0.5 XLM per subentry
+ * (trustline, offer, signer, …).  We use a conservative floor of 1.5 XLM
+ * (base + one expected trustline for the payment asset) so the available
+ * balance shown to the buyer reflects what they can actually spend.
+ */
+const XLM_MIN_RESERVE = 1.5;
+
+// ── useWalletBalance hook ─────────────────────────────────────────────────────
+
+/**
+ * Fetches the buyer's balance for a given asset and returns whether they have
+ * enough to cover `required` (price + fee).
+ *
+ * State shape:
+ *   { status: 'idle'|'loading'|'loaded'|'unfunded'|'error',
+ *     available: number,   // spendable balance for the asset
+ *     hasSufficientFunds: boolean|null }
+ *
+ * Returns a `refresh()` function so the parent can trigger a re-fetch after a
+ * successful purchase.
+ */
+function useWalletBalance({ address, assetCode, assetIssuer, required }) {
+  const [status, setStatus] = useState("idle");
+  const [available, setAvailable] = useState(null);
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  useEffect(() => {
+    if (!address) {
+      setStatus("idle");
+      setAvailable(null);
+      return;
+    }
+
+    let cancelled = false;
+    setStatus("loading");
+
+    fetchBalances(address)
+      .then((result) => {
+        if (cancelled) return;
+        if (result.status === "unfunded") {
+          setStatus("unfunded");
+          setAvailable(0);
+          return;
+        }
+        const { balances, native } = result.snapshot;
+        let spendable;
+        if (assetCode === NATIVE_ASSET || !assetCode) {
+          // XLM: subtract the minimum reserve so the buyer can't accidentally
+          // drain the account below the network's required floor.
+          spendable = Math.max(0, parseFloat(native.balance) - XLM_MIN_RESERVE);
+        } else {
+          // Non-native asset (e.g. USDC): report the token balance directly.
+          // The XLM balance still needs to cover the fee, but the token is
+          // what the buyer is spending, so we show and validate that.
+          spendable = parseFloat(findAssetBalance(balances, assetCode, assetIssuer) ?? "0");
+        }
+        setAvailable(spendable);
+        setStatus("loaded");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setStatus("error");
+        setAvailable(null);
+      });
+
+    return () => { cancelled = true; };
+  }, [address, assetCode, assetIssuer, refreshTick]);
+
+  const hasSufficientFunds = useMemo(() => {
+    if (available === null || required === null || required === undefined) return null;
+    return available >= required;
+  }, [available, required]);
+
+  const refresh = useCallback(() => setRefreshTick((t) => t + 1), []);
+
+  return { status, available, hasSufficientFunds, refresh };
+}
 
 const SUPPORTED_ASSETS = [
   { code: ACCEPTED_ASSET, issuer: null, label: `Stellar ${ACCEPTED_ASSET}` },
@@ -88,6 +171,27 @@ export default function BuyNowModal({
     selectedAsset,
     price,
   );
+
+  // ── Balance & funds check ─────────────────────────────────────────────────
+  const required = useMemo(() => {
+    if (!quote) return null;
+    return parseFloat(quote.amount) + parseFloat(quote.fee || 0);
+  }, [quote]);
+
+  const {
+    status: balanceStatus,
+    available: availableBalance,
+    hasSufficientFunds,
+    refresh: refreshBalance,
+  } = useWalletBalance({
+    address,
+    assetCode: selectedAsset?.code ?? ACCEPTED_ASSET,
+    assetIssuer: selectedAsset?.issuer ?? null,
+    required,
+  });
+
+  const balanceLoading = balanceStatus === "loading";
+  const balanceUnknown = balanceStatus === "idle" || balanceStatus === "error";
   const {
     activeTransaction,
     beginTransaction,
@@ -249,6 +353,7 @@ export default function BuyNowModal({
       }));
       setReceiptStatus("success");
       onAccessUpdated?.();
+      refreshBalance();
 
       confirmTransaction({
         txHash: confirmedHash,
@@ -376,6 +481,52 @@ export default function BuyNowModal({
                   </button>
                 </div>
 
+                {/* Balance & insufficient-funds warning */}
+                {address && quote ? (
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between text-xs text-slate-500">
+                      <span>Your {selectedAsset.code} balance</span>
+                      {balanceLoading ? (
+                        <span className="text-slate-400">Checking…</span>
+                      ) : balanceUnknown ? (
+                        <span className="text-slate-400">—</span>
+                      ) : balanceStatus === "unfunded" ? (
+                        <span className="font-semibold text-rose-500">Account unfunded</span>
+                      ) : (
+                        <span className={`font-semibold ${hasSufficientFunds === false ? "text-rose-500" : "text-slate-700"}`}>
+                          {availableBalance?.toFixed(4)} {selectedAsset.code}
+                          {selectedAsset.code === NATIVE_ASSET ? (
+                            <span className="ml-1 font-normal text-slate-400">(after {XLM_MIN_RESERVE} XLM reserve)</span>
+                          ) : null}
+                        </span>
+                      )}
+                    </div>
+
+                    {hasSufficientFunds === false && !balanceLoading ? (
+                      <div
+                        role="alert"
+                        className="mt-2 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs text-rose-700"
+                      >
+                        <FaExclamationTriangle className="mt-0.5 shrink-0 text-rose-500" aria-hidden="true" />
+                        <div>
+                          <p className="font-semibold">Insufficient funds</p>
+                          <p className="mt-0.5">
+                            You need{" "}
+                            <span className="font-bold">
+                              {required?.toFixed(4)} {selectedAsset.code}
+                            </span>{" "}
+                            (price + fee) but your available balance is{" "}
+                            <span className="font-bold">
+                              {availableBalance?.toFixed(4)} {selectedAsset.code}
+                            </span>
+                            . Top up your wallet and try again.
+                          </p>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 <TransactionStatusPanel
                   transaction={activeTransaction}
                   onRetry={handlePay}
@@ -389,7 +540,9 @@ export default function BuyNowModal({
                     createPurchaseMutation.isPending ||
                     startAccessRequestMutation.isPending ||
                     quoteLoading ||
-                    !quote
+                    !quote ||
+                    balanceLoading ||
+                    hasSufficientFunds === false
                   }
                   className="mt-5 w-full rounded-2xl bg-blue-600 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
                 >
