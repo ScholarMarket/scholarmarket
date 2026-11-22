@@ -1,19 +1,14 @@
-/** File constraints shared by initial uploads and revision uploads. */
-
-export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
-export const MAX_THUMBNAIL_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
-
-export const ALLOWED_FILE_TYPES = [
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/vnd.ms-powerpoint',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'text/plain',
-  'application/zip',
-  'application/x-zip-compressed',
-];
-
-export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+/**
+ * File constraints shared by initial uploads and revision uploads.
+ *
+ * The canonical source of truth is `src/lib/ipfs/uploadValidator.js`; this module
+ * re-exports the shared limits and allowlists so existing consumers (the
+ * revisions route, etc.) keep importing from `@/lib/materials/uploadValidation`
+ * while validation is unified in one place.
+ */
+export {
+  MAX_FILE_SIZE_BYTES,
+  MAX_THUMBNAIL_SIZE_BYTES,
+  ALLOWED_FILE_TYPES,
+  ALLOWED_IMAGE_TYPES,
+} from "../ipfs/uploadValidator.js";

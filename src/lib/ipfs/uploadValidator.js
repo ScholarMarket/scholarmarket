@@ -1,7 +1,18 @@
 /**
+ * Canonical upload validation.
+ *
  * Validates uploaded file byte streams by inspecting magic numbers / file headers
- * before dispatching to Pinata. Prevents malformed or spoofed files from being pinned.
+ * before dispatching to Pinata (prevents malformed or spoofed files from being
+ * pinned), and owns the shared file-type allowlists, size limits, and the
+ * request-level `validateUploadRequest` used by the consolidated upload routes.
+ * `src/lib/materials/uploadValidation.js` re-exports the constants from here so
+ * every upload path (initial upload, revisions) shares one source of truth.
  */
+
+import {
+  validateUploadFileMetadata,
+  validateUploadPayload,
+} from "../api/validation.js";
 
 // Magic number signatures keyed by MIME type
 const SIGNATURES = {
@@ -56,8 +67,25 @@ const SIGNATURES = {
   ],
 };
 
-export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
+export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 export const MAX_THUMBNAIL_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+
+/** Allowed MIME types for the main document file. Shared by uploads + revisions. */
+export const ALLOWED_FILE_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/plain',
+  'application/zip',
+  'application/x-zip-compressed',
+];
+
+/** Allowed MIME types for the optional thumbnail image. */
+export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 export function validateFileSize(file, maxBytes = MAX_FILE_SIZE_BYTES) {
   if (!file || typeof file.size !== 'number') {
@@ -173,4 +201,126 @@ export async function validateUploadedFile(file, allowedTypes) {
   }
 
   return validateFileMagicNumber(file);
+}
+
+/**
+ * Runs the full request-level validation for an upload: file presence, size,
+ * MIME allowlist, magic-number signature, optional thumbnail, and the structured
+ * metadata fields. Returns a structured result so the route can map it to an HTTP
+ * response and an audit event without re-implementing the checks.
+ *
+ * @param {object} args
+ * @param {File} [args.file] - main document file from FormData
+ * @param {File} [args.image] - optional thumbnail from FormData
+ * @param {FormData} args.form - the upload form (used for metadata fields)
+ * @returns {Promise<{ valid: true } | { valid: false, status: number, reason: string, event: 'upload_failed'|'upload_blocked', auditReason: string }>}
+ */
+export async function validateUploadRequest({ file, image, form } = {}) {
+  if (!file) {
+    return {
+      valid: false,
+      status: 400,
+      event: 'upload_failed',
+      auditReason: 'missing_file',
+      reason: 'No document file provided.',
+    };
+  }
+
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+    return {
+      valid: false,
+      status: 413,
+      event: 'upload_failed',
+      auditReason: 'file_too_large',
+      reason: `File size (${sizeMB}MB) exceeds the 10MB limit.`,
+    };
+  }
+
+  if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+    return {
+      valid: false,
+      status: 415,
+      event: 'upload_failed',
+      auditReason: 'unsupported_file_type',
+      reason: `Unsupported file type: ${file.type || 'unknown'}. Allowed types include PDF, Word, Excel, PPT, TXT, and ZIP.`,
+    };
+  }
+
+  const fileCheck = await validateUploadedFile(file, ALLOWED_FILE_TYPES);
+  if (!fileCheck.valid) {
+    return {
+      valid: false,
+      status: 422,
+      event: 'upload_blocked',
+      auditReason: fileCheck.reason,
+      reason: fileCheck.reason,
+    };
+  }
+
+  if (image) {
+    if (image.size > MAX_THUMBNAIL_SIZE_BYTES) {
+      const sizeMB = (image.size / (1024 * 1024)).toFixed(2);
+      return {
+        valid: false,
+        status: 413,
+        event: 'upload_failed',
+        auditReason: 'thumbnail_too_large',
+        reason: `Thumbnail size (${sizeMB}MB) exceeds the 5MB limit.`,
+      };
+    }
+    if (!ALLOWED_IMAGE_TYPES.includes(image.type)) {
+      return {
+        valid: false,
+        status: 415,
+        event: 'upload_failed',
+        auditReason: 'unsupported_thumbnail_type',
+        reason: `Unsupported thumbnail type: ${image.type || 'unknown'}. Allowed types are JPG, PNG, and WEBP.`,
+      };
+    }
+    const imageCheck = await validateUploadedFile(image, ALLOWED_IMAGE_TYPES);
+    if (!imageCheck.valid) {
+      return {
+        valid: false,
+        status: 422,
+        event: 'upload_blocked',
+        auditReason: imageCheck.reason,
+        reason: imageCheck.reason,
+      };
+    }
+  }
+
+  try {
+    validateUploadFileMetadata(file, 'file');
+  } catch (validationErr) {
+    return {
+      valid: false,
+      status: 400,
+      event: 'upload_failed',
+      auditReason: validationErr.message,
+      reason: validationErr.message,
+    };
+  }
+
+  const metadataPayload = {
+    title: form?.get('title') || form?.get('name'),
+    description: form?.get('description'),
+    price: form?.get('price'),
+    usageRights: form?.get('usageRights'),
+    visibility: form?.get('visibility'),
+  };
+
+  try {
+    validateUploadPayload(metadataPayload);
+  } catch (validationErr) {
+    return {
+      valid: false,
+      status: 400,
+      event: 'upload_failed',
+      auditReason: validationErr.message,
+      reason: validationErr.message,
+    };
+  }
+
+  return { valid: true };
 }

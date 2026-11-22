@@ -2,6 +2,11 @@ import { NextResponse } from "next/server.js";
 import { getDb } from "../../../../../lib/mongodb.js";
 import { getUserFromCookie } from "../../../../../lib/api/auth.js";
 import { logger } from "../../../../../lib/logger.js";
+import {
+  buildMaterialKeys,
+  buildRefundsQuery,
+  isRefundedPurchase,
+} from "../../../../../lib/backend/creatorAnalytics.js";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,6 +17,13 @@ function escapeCsvCell(val) {
   return `"${str.replace(/"/g, '""')}"`;
 }
 
+/**
+ * GET /api/creator/analytics/export
+ *
+ * Exports a creator's transaction activity (purchases, refunds, payouts) as a
+ * CSV. The route owns auth, params and the CSV response; record shaping reuses
+ * the shared builders from src/lib/backend/creatorAnalytics.js.
+ */
 export async function GET(request) {
   try {
     const user = await getUserFromCookie(request);
@@ -29,42 +41,24 @@ export async function GET(request) {
     const toParam = url.searchParams.get("to");
     const fromDate = fromParam ? new Date(fromParam) : null;
     const toDate = toParam ? new Date(toParam) : null;
-
-    const db = await getDb();
-    const url = new URL(request.url);
-    const from = url.searchParams.get("from") ? new Date(url.searchParams.get("from")) : null;
-    const toParam = url.searchParams.get("to") ? new Date(url.searchParams.get("to")) : null;
-    const to = toParam && !Number.isNaN(toParam.getTime()) ? toParam : null;
-    const validFrom = from && !Number.isNaN(from.getTime()) ? from : null;
-    if (validFrom && to && validFrom > to) {
+    const validFrom = fromDate && !Number.isNaN(fromDate.getTime()) ? fromDate : null;
+    const validTo = toDate && !Number.isNaN(toDate.getTime()) ? toDate : null;
+    if (validFrom && validTo && validFrom > validTo) {
       return NextResponse.json({ error: "Invalid date range" }, { status: 400 });
     }
 
-    // 1. Fetch materials to get material IDs
-    const materials = await db.collection("materials")
-      .find({ userAddress: creatorAddress }, { projection: { materialId: 1, _id: 1 } })
+    const db = await getDb();
 
-    // 1. Fetch materials owned by this creator
+    // 1. Materials owned by this creator -> material id strings.
     const materials = await db
       .collection("materials")
-      .find({ userAddress: creatorAddress }, { projection: { materialId: 1, _id: 1, title: 1 } })
+      .find({ userAddress: creatorAddress }, { projection: { materialId: 1, _id: 1 } })
       .toArray();
+    const materialIdStrings = [...new Set(materials.flatMap(buildMaterialKeys))];
 
-    const materialIdStrings = [
-      ...new Set(materials.flatMap((m) => [String(m._id), String(m.materialId)].filter(Boolean))),
-    ];
-
-    // 2. Fetch purchases for these materials
+    // 2. Purchases for these materials (date filtering is applied to the records below).
     let purchases = [];
     if (materialIdStrings.length > 0) {
-      const dateFilter = validFrom || to ? { $and: [] } : null;
-      if (dateFilter) {
-        if (validFrom) dateFilter.$and.push({ $or: [{ purchasedAt: { $gte: validFrom } }, { createdAt: { $gte: validFrom } }] });
-        if (to) dateFilter.$and.push({ $or: [{ purchasedAt: { $lte: to } }, { createdAt: { $lte: to } }] });
-      }
-
-      purchases = await db.collection("purchases")
-        .find(dateFilter ? { materialId: { $in: materialIdStrings }, ...dateFilter } : { materialId: { $in: materialIdStrings } })
       purchases = await db
         .collection("purchases")
         .find({ materialId: { $in: materialIdStrings } })
@@ -72,56 +66,40 @@ export async function GET(request) {
         .toArray();
     }
 
-    // 3. Fetch payouts for this creator
-    const payoutDocs = await db.collection("payouts")
+    // 3. Payouts for this creator.
     const payouts = await db
       .collection("payouts")
       .find({ creatorAddress })
       .sort({ createdAt: -1 })
       .toArray();
-    const payouts = payoutDocs.filter((p) => {
-      if (!validFrom && !to) return true;
-      const date = new Date(p.createdAt || p.updatedAt || 0);
-      return (!validFrom || date >= validFrom) && (!to || date <= to);
-    });
 
-    // 4. Fetch refunds for this creator's materials
+    // 4. Refunds for this creator's materials (shared query builder).
     let refunds = [];
     if (materialIdStrings.length > 0) {
       refunds = await db
         .collection("refunds")
-        .find({
-          $or: [
-            { materialId: { $in: materialIdStrings } },
-            { creatorAddress },
-          ],
-          status: { $nin: ["rejected", "cancelled"] },
-        })
+        .find(buildRefundsQuery(materialIdStrings, creatorAddress))
         .sort({ createdAt: -1 })
         .toArray();
     }
 
-    // 5. Combine and format records
+    // 5. Combine purchases, refunds and payouts into a single record list.
     const records = [];
 
-    // Map purchases
     for (const p of purchases) {
       const date = new Date(p.purchasedAt || p.createdAt || p.updatedAt || 0).toISOString();
-      const isRefunded = p.status === "refunded" || p.settlementState === "Refunded";
+      const refunded = isRefundedPurchase(p);
       const rawPrice = Number(p.amount) || 0;
-      const price = isRefunded ? `-${Math.abs(rawPrice)}` : String(rawPrice);
-
       records.push({
         date,
         itemId: String(p.materialId || "Unknown"),
         buyerWallet: String(p.buyerAddress || "Unknown"),
-        price,
+        price: refunded ? `-${Math.abs(rawPrice)}` : String(rawPrice),
         paidAsset: p.currency || p.asset || "XLM",
-        status: isRefunded ? "refunded" : (p.status || "completed"),
+        status: refunded ? "refunded" : p.status || "completed",
       });
     }
 
-    // Map refunds from refunds collection
     for (const r of refunds) {
       const date = new Date(r.createdAt || r.approvedAt || r.updatedAt || 0).toISOString();
       const rawAmount = Number(r.amount) || 0;
@@ -135,7 +113,6 @@ export async function GET(request) {
       });
     }
 
-    // Map payouts
     for (const p of payouts) {
       const date = new Date(p.createdAt || p.updatedAt || 0).toISOString();
       records.push({
@@ -148,39 +125,33 @@ export async function GET(request) {
       });
     }
 
-    // Filter by date range if provided
+    // 6. Filter by the requested date range, then sort newest first.
     let filteredRecords = records;
-    if (fromDate || toDate) {
+    if (validFrom || validTo) {
       filteredRecords = records.filter((r) => {
         const itemTime = new Date(r.date).getTime();
-        if (fromDate && itemTime < fromDate.getTime()) return false;
-        if (toDate && itemTime > toDate.getTime()) return false;
+        if (validFrom && itemTime < validFrom.getTime()) return false;
+        if (validTo && itemTime > validTo.getTime()) return false;
         return true;
       });
     }
-
-    // Sort combined records by date descending
     filteredRecords.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    // 6. Generate CSV with RFC 4180 escaping
+    // 7. Build the CSV with RFC 4180 escaping.
     const headers = ["Date", "Item ID", "Buyer Wallet", "Price", "Paid Asset", "Status"];
     const csvRows = [headers.map(escapeCsvCell).join(",")];
-
-    const csvEscape = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
-    for (const r of records) {
-      const row = [r.date, r.itemId, r.buyerWallet, r.price, r.paidAsset, r.status].map(csvEscape);
     for (const r of filteredRecords) {
-      const row = [
-        escapeCsvCell(r.date),
-        escapeCsvCell(r.itemId),
-        escapeCsvCell(r.buyerWallet),
-        String(r.price),
-        escapeCsvCell(r.paidAsset),
-        escapeCsvCell(r.status),
-      ];
-      csvRows.push(row.join(","));
+      csvRows.push(
+        [
+          escapeCsvCell(r.date),
+          escapeCsvCell(r.itemId),
+          escapeCsvCell(r.buyerWallet),
+          String(r.price),
+          escapeCsvCell(r.paidAsset),
+          escapeCsvCell(r.status),
+        ].join(",")
+      );
     }
-
     const csvString = csvRows.join("\n");
 
     return new NextResponse(csvString, {

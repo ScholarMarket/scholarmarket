@@ -87,3 +87,27 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--foreground);
 }
 
+
+/*
+ * Accessibility: Respect the user's OS-level `prefers-reduced-motion` preference.
+ *
+ * Neutralizes CSS transitions and animations (Tailwind's animate-pulse / ping /
+ * spin / bounce, hover transitions, etc.) so nothing translates, scales, or
+ * flashes for users who have requested reduced motion. Framer Motion transform
+ * animations are handled separately by <MotionConfig reducedMotion="user"> in
+ * the root layout (see src/components/ReducedMotionProvider.jsx). The final
+ * visual state of each element is preserved; only the motion is removed.
+ *
+ * Durations use 0.01ms (instead of 0ms) so transitions still "complete" and apply
+ * their end state rather than being interrupted mid-flight.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
