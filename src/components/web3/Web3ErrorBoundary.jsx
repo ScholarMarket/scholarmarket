@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { captureException } from "@sentry/nextjs";
 import Web3TransactionFallback from "@/components/web3/Web3TransactionFallback";
 
 export default class Web3ErrorBoundary extends React.Component {
@@ -15,6 +16,7 @@ export default class Web3ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     console.error("Web3 boundary caught an error", error, errorInfo);
+    captureException(error, { extra: errorInfo });
   }
 
   handleRetry = () => {

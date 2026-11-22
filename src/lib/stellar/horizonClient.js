@@ -251,3 +251,51 @@ export async function checkBuyerTrustline(publicKey, assetCode, issuerAddress) {
 
   return { hasTrustline: true, balance: trustline.balance, issuer };
 }
+
+/**
+ * Build an unsigned changeTrust transaction XDR that establishes (or removes)
+ * a trustline for `assetCode` on the buyer's account.  The caller signs the
+ * returned XDR with the wallet kit and submits it via useStellarTransaction.
+ *
+ * A limit of "922337203685.4775807" (the Stellar SDK MAX_INT64 string) means
+ * "accept as much as the network allows", which is the conventional default for
+ * new trustlines.  Pass `limit = "0"` to remove an existing trustline.
+ *
+ * @param {string} publicKey        – Stellar G… address of the trustline owner
+ * @param {string} assetCode        – e.g. 'USDC'
+ * @param {string} [issuerAddress]  – issuer G… address; falls back to env / known issuers
+ * @param {string} [limit]          – trustline limit string; defaults to max
+ * @returns {Promise<{ unsignedXdr: string, issuer: string, networkPassphrase: string }>}
+ */
+export async function buildChangeTrustXdr(publicKey, assetCode, issuerAddress, limit) {
+  // Import lazily so this module stays usable in server contexts where the SDK
+  // heavy-lifters (TransactionBuilder, Operation) are only needed occasionally.
+  const { TransactionBuilder, Operation, Asset } = await import('@stellar/stellar-sdk');
+  const { NETWORK_PASSPHRASE, isMainnet: mainnet } = await import('../config/chain.js');
+
+  const resolvedIssuer =
+    issuerAddress ||
+    process.env.NEXT_PUBLIC_USDC_ISSUER ||
+    KNOWN_USDC_ISSUERS[mainnet ? 'mainnet' : 'testnet'];
+
+  const resolvedLimit = limit ?? '922337203685.4775807';
+
+  const account = await loadAccount(publicKey);
+  const { feeStroops } = await (await import('./checkoutService.js')).calculateDynamicFee();
+
+  const asset = new Asset(assetCode, resolvedIssuer);
+
+  const tx = new TransactionBuilder(account, {
+    fee: String(feeStroops),
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(Operation.changeTrust({ asset, limit: resolvedLimit }))
+    .setTimeout(300)
+    .build();
+
+  return {
+    unsignedXdr: tx.toXDR(),
+    issuer: resolvedIssuer,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  };
+}
