@@ -45,6 +45,46 @@ To develop shared UI primitives, run `npm run storybook`; use `npm run build-sto
 - Do not add new product work to the archived EVM prototype unless there is an explicit architecture decision to do so.
 - Update documentation when architecture or environment requirements change.
 
+## Accessibility: Reduced Motion
+
+The app must respect a user's OS-level `prefers-reduced-motion` setting. This is handled in two layers, and new animations should follow the same patterns.
+
+### Framer Motion (JS-driven animation)
+
+The whole app is wrapped in `<MotionConfig reducedMotion="user">` via `src/components/ReducedMotionProvider.jsx`, which is mounted in all users in `src/app/layout.js`. When a user has enabled reduced motion, Framer Motion automatically disables transform and layout animations (`x`, `y`, `scale`, `rotate`, `layout`) while preserving `opacity` and color animations.
+
+Because of this, **always pair `opacity` with any transform in entry/scroll animations**. This makes the reduced-motion fallback degrade to a graceful opacity fade instead of an instant pop, while leaving the default experience unchanged for other users.
+
+Do:
+
+```jsx
+const fadeUp = {
+  hidden: { opacity: 0, y: 30 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } },
+};
+
+<motion.h1 initial="hidden" whileInView="show" variants={fadeUp} />
+```
+
+Avoid standalone transform-only entry animations (no opacity to fall back to):
+
+```jsx
+// Avoid: reduced-motion users get an instant pop with no fade.
+<motion.h1 initial={{ y: 30 }} whileInView={{ y: 0 }} />
+```
+
+Continuous decorative loops (e.g. a floating card) that are transform-only are fine — they simply stop moving under reduced motion. Don't add opacity to them just to "fix" reduced motion; they should stay fully visible.
+
+Do not add per-component `useReducedMotion` toggles. The global `MotionConfig` already handles the transform stripping consistently; component-level checks duplicate that logic and drift out of sync.
+
+### CSS transitions and animations
+
+CSS transitions and keyframe animations (Tailwind's `animate-pulse`, `animate-ping`, `animate-spin`, `animate-bounce`, and hover `transition-*` utilities) are not controlled by Framer Motion. A global override in `src/app/globals.css` neutralizes them under `@media (prefers-reduced-motion: reduce)` by clamping `animation-duration` and `transition-duration` to `0.01ms` so the final state still applies without visible motion.
+
+- Don't fight this override with `!important` motion rules or inline animation durations.
+- If you add a custom keyframe animation, it is covered automatically — no extra work needed.
+- Prefer opacity/color transitions over transform-based transitions for state changes so the no-motion fallback still reads naturally.
+
 ## Pull Request Checklist
 
 - The change is scoped and explained clearly.

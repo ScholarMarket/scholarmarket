@@ -96,6 +96,7 @@ function useWalletBalance({ address, assetCode, assetIssuer, required }) {
 
   return { status, available, hasSufficientFunds, refresh };
 }
+import TrustlineGate from "@/components/TrustlineGate";
 
 const SUPPORTED_ASSETS = [
   { code: ACCEPTED_ASSET, issuer: null, label: `Stellar ${ACCEPTED_ASSET}` },
@@ -166,6 +167,9 @@ export default function BuyNowModal({
   const [checkoutError, setCheckoutError] = useState(null);
   const [downloadError, setDownloadError] = useState(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  // Trustline gate: set when build-xdr returns code:"missing_trustline"
+  const [trustlineNeeded, setTrustlineNeeded] = useState(false);
+  const [issuerForTrustline, setIssuerForTrustline] = useState(null);
   const { loading: quoteLoading, error: quoteError, quote, refresh } = useQuote(
     materialId,
     selectedAsset,
@@ -217,6 +221,8 @@ export default function BuyNowModal({
     setCheckoutError(null);
     setDownloadError(null);
     setIsDownloading(false);
+    setTrustlineNeeded(false);
+    setIssuerForTrustline(null);
     createPurchaseMutation.reset();
     startAccessRequestMutation.reset();
     clearTransaction();
@@ -294,6 +300,14 @@ export default function BuyNowModal({
 
       if (!xdrResponse.ok) {
         const errBody = await xdrResponse.json().catch(() => ({}));
+        // Missing trustline: show the guided gate instead of a generic error.
+        if (errBody.code === "missing_trustline") {
+          setIssuerForTrustline(errBody.issuer ?? null);
+          setTrustlineNeeded(true);
+          setReceiptStatus("idle");
+          clearTransaction();
+          return;
+        }
         throw new Error(errBody.detail || errBody.error || "Failed to build payment transaction");
       }
 
@@ -550,6 +564,42 @@ export default function BuyNowModal({
                     ? "Processing..."
                     : "Pay and unlock access"}
                 </button>
+                {/* Trustline gate — shown instead of the pay button when USDC
+                    trustline is absent. Resumes checkout automatically on success. */}
+                {trustlineNeeded ? (
+                  <TrustlineGate
+                    address={address}
+                    assetCode={selectedAsset.code}
+                    issuerAddress={issuerForTrustline}
+                    onConfirmed={() => {
+                      setTrustlineNeeded(false);
+                      setIssuerForTrustline(null);
+                      // Re-attempt checkout now that the trustline is confirmed.
+                      handlePay();
+                    }}
+                    onCancel={() => {
+                      setTrustlineNeeded(false);
+                      setIssuerForTrustline(null);
+                      clearTransaction();
+                    }}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handlePay}
+                    disabled={
+                      createPurchaseMutation.isPending ||
+                      startAccessRequestMutation.isPending ||
+                      quoteLoading ||
+                      !quote
+                    }
+                    className="mt-5 w-full rounded-2xl bg-blue-600 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
+                  >
+                    {createPurchaseMutation.isPending || startAccessRequestMutation.isPending
+                      ? "Processing..."
+                      : "Pay and unlock access"}
+                  </button>
+                )}
               </div>
             </motion.div>
           </>
