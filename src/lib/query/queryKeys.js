@@ -1,8 +1,21 @@
+function normalizeParams(params) {
+  if (!params || typeof params !== 'object' || Array.isArray(params)) return params;
+  return Object.keys(params)
+    .sort()
+    .reduce((acc, key) => {
+      const value = params[key];
+      acc[key] = value && typeof value === 'object' && !Array.isArray(value)
+        ? normalizeParams(value)
+        : value;
+      return acc;
+    }, {});
+}
+
 export const queryKeys = {
   materials: {
     all: ['materials'],
-    marketplace: (params) => ['materials', 'marketplace', params],
-    trending: (params) => ['materials', 'trending', params],
+    marketplace: (params) => ['materials', 'marketplace', normalizeParams(params)],
+    trending: (params) => ['materials', 'trending', normalizeParams(params)],
     detail: (id) => ['materials', 'detail', id],
     feedback: (id) => ['materials', 'feedback', id],
     notes: (id) => ['materials', 'notes', id],
@@ -38,6 +51,6 @@ export const queryKeys = {
   },
   transactions: {
     all: ['transactions'],
-    history: (params) => (params ? ['transactions', 'history', params] : ['transactions', 'history']),
+    history: (params) => (params ? ['transactions', 'history', normalizeParams(params)] : ['transactions', 'history']),
   },
 };
