@@ -28,10 +28,42 @@ export const materialService = {
   },
 
   uploadFile: async (formData) => {
-    return apiClient('/api/materials/upload', { 
-      body: formData,
-      headers: { 'Content-Type': undefined },
-      method: 'POST'
+    if (process.env.NEXT_PUBLIC_DIRECT_UPLOADS === 'false') {
+      return apiClient('/api/materials/upload', {
+        body: formData,
+        headers: { 'Content-Type': undefined },
+        method: 'POST',
+      });
+    }
+
+    const upload = async (file, kind) => {
+      const signed = await apiClient('/api/materials/upload-url', {
+        body: { name: file.name, mimeType: file.type, size: file.size, kind },
+      });
+      const payload = new FormData();
+      payload.set('network', 'public');
+      payload.set('file', file);
+      const response = await fetch(signed.url, { method: 'POST', body: payload });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error || 'Direct upload failed');
+      const uploaded = result.data || result;
+      if (!uploaded.cid) throw new Error('Direct upload did not return a CID');
+      return { cid: uploaded.cid, token: signed.token };
+    };
+
+    const file = formData.get('file');
+    const thumbnail = formData.get('thumbnail');
+    const main = await upload(file, 'material');
+    const image = thumbnail instanceof File ? await upload(thumbnail, 'thumbnail') : null;
+    const fields = Object.fromEntries([...formData.entries()].filter(([key]) => key !== 'file' && key !== 'thumbnail'));
+    return apiClient('/api/materials/upload-finalize', {
+      body: {
+        cid: main.cid,
+        token: main.token,
+        thumbnailCid: image?.cid,
+        thumbnailToken: image?.token,
+        fields,
+      },
     });
   },
 

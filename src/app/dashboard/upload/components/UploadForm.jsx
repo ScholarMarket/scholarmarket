@@ -5,6 +5,7 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import { FaCloudUploadAlt } from "react-icons/fa";
 import { useWallet } from "@/hooks/useWallet";
+import { MAX_FILE_SIZE_BYTES, MAX_THUMBNAIL_SIZE_BYTES } from "@/lib/materials/uploadLimits";
 
 const Cropper = dynamic(() => import("react-easy-crop"), { ssr: false, loading: () => <div className="h-56 bg-gray-100 animate-pulse rounded-md" /> });
 import { WalletStatus } from "@/providers/WalletProvider";
@@ -65,10 +66,10 @@ export default function UploadForm() {
   const handleDocChange = (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 50 * 1024 * 1024) {
+      if (file.size > MAX_FILE_SIZE_BYTES) {
         setFieldErrors((prev) => ({
           ...prev,
-          file: `File size ${(file.size / (1024 * 1024)).toFixed(2)}MB exceeds the 50MB limit.`,
+          file: `File size ${(file.size / (1024 * 1024)).toFixed(2)}MB exceeds the ${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB limit.`,
         }));
         return;
       }
@@ -85,7 +86,7 @@ export default function UploadForm() {
   const handleThumbChange = (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
+      if (file.size > MAX_THUMBNAIL_SIZE_BYTES) {
         setFieldErrors((prev) => ({
           ...prev,
           thumb: `File size ${(file.size / (1024 * 1024)).toFixed(2)}MB exceeds the 5MB limit.`,

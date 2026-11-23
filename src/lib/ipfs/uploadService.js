@@ -116,6 +116,32 @@ function buildMetadataJSON({ form, storageKey, fileUrl, imgUrl }) {
   };
 }
 
+export async function finalizeDirectUpload({ file, image, fields, uploaderAddress }) {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(fields || {})) {
+    if (value !== undefined && value !== null) form.set(key, String(value));
+  }
+  const metadataJSON = buildMetadataJSON({ form, storageKey: file.cid, fileUrl: file.url, imgUrl: image?.url || null });
+  const metadataUrl = await pinMetadata(metadataJSON);
+  const db = await getDb();
+  const quarantine = await persistQuarantine({
+    db,
+    storageKey: file.cid,
+    file,
+    title: file.name,
+    uploaderAddress,
+  });
+  return {
+    success: true,
+    status: "quarantined",
+    storageKey: file.cid,
+    contentHash: quarantine.contentHash,
+    image: image?.url || "",
+    metadata: metadataUrl,
+    quarantineState: quarantine.state,
+  };
+}
+
 async function pinFile(file) {
   const uploaded = await retryWithBackoff(
     () => pinata.upload.public.file(file),

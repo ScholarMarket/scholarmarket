@@ -14,6 +14,9 @@ import { processUpload } from '@/lib/ipfs/uploadService';
  * delegate here without duplicating logic.
  */
 export async function POST(request) {
+  if (process.env.ENABLE_LEGACY_PROXY_UPLOAD === "false") {
+    return NextResponse.json({ error: "Legacy proxy uploads are disabled" }, { status: 410 });
+  }
   return withApiHardening(
     request,
     { route: 'materials/upload', rateLimit: { limit: 20, windowMs: 60_000 } },

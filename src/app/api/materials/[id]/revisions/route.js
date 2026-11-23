@@ -129,7 +129,7 @@ export async function POST(request, { params }) {
           return NextResponse.json({ error: 'No document file provided.' }, { status: 400 });
         }
         if (file.size > MAX_FILE_SIZE_BYTES) {
-          return NextResponse.json({ error: 'File size exceeds the 10MB limit.' }, { status: 413 });
+          return NextResponse.json({ error: `File size exceeds the ${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB limit.` }, { status: 413 });
         }
         if (!ALLOWED_FILE_TYPES.includes(file.type)) {
           return NextResponse.json({ error: `Unsupported file type: ${file.type || 'unknown'}.` }, { status: 415 });
