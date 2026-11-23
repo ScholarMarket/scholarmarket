@@ -13,6 +13,14 @@ import {
   validateUploadFileMetadata,
   validateUploadPayload,
 } from "../api/validation.js";
+import {
+  MAX_FILE_SIZE_BYTES,
+  MAX_THUMBNAIL_SIZE_BYTES,
+  ALLOWED_FILE_TYPES,
+  ALLOWED_IMAGE_TYPES,
+} from "../materials/uploadLimits.js";
+
+export { MAX_FILE_SIZE_BYTES, MAX_THUMBNAIL_SIZE_BYTES, ALLOWED_FILE_TYPES, ALLOWED_IMAGE_TYPES };
 
 // Magic number signatures keyed by MIME type
 const SIGNATURES = {
@@ -66,26 +74,6 @@ const SIGNATURES = {
     { offset: 0, bytes: [0x52, 0x49, 0x46, 0x46] }, // RIFF — verified alongside WEBP marker below
   ],
 };
-
-export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
-export const MAX_THUMBNAIL_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
-
-/** Allowed MIME types for the main document file. Shared by uploads + revisions. */
-export const ALLOWED_FILE_TYPES = [
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/vnd.ms-powerpoint',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'text/plain',
-  'application/zip',
-  'application/x-zip-compressed',
-];
-
-/** Allowed MIME types for the optional thumbnail image. */
-export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 export function validateFileSize(file, maxBytes = MAX_FILE_SIZE_BYTES) {
   if (!file || typeof file.size !== 'number') {
@@ -233,7 +221,7 @@ export async function validateUploadRequest({ file, image, form } = {}) {
       status: 413,
       event: 'upload_failed',
       auditReason: 'file_too_large',
-      reason: `File size (${sizeMB}MB) exceeds the 10MB limit.`,
+      reason: `File size (${sizeMB}MB) exceeds the ${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB limit.`,
     };
   }
 

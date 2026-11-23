@@ -21,6 +21,7 @@ import TransactionStatusPanel from "@/components/transactions/TransactionStatusP
 import { useTransactionCenter } from "@/providers/TransactionProvider";
 import { TransactionStatus } from "@/lib/transactions/transaction";
 import { isUploadChain } from "@/lib/web3/chains";
+import { MAX_FILE_SIZE_BYTES, MAX_THUMBNAIL_SIZE_BYTES } from "@/lib/materials/uploadLimits";
 
 const contractAddress = process.env.NEXT_PUBLIC_UPLOAD_CONTRACT_ADDRESS ?? "0x3f48520ca0d8d51345b416b5a3e083dac8790f55";
 
@@ -111,8 +112,8 @@ export default function UploadWizard() {
           setError("Please upload a document file.");
           return false;
         }
-        if (docFile.size > 10 * 1024 * 1024) {
-          setError("Document file size exceeds the 10MB limit. Please select a smaller file.");
+        if (docFile.size > MAX_FILE_SIZE_BYTES) {
+          setError(`Document file size exceeds the ${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB limit. Please select a smaller file.`);
           return false;
         }
         const docExt = docFile.name.substring(docFile.name.lastIndexOf(".")).toLowerCase();
@@ -122,7 +123,7 @@ export default function UploadWizard() {
           return false;
         }
         if (thumbFile) {
-          if (thumbFile.size > 5 * 1024 * 1024) {
+          if (thumbFile.size > MAX_THUMBNAIL_SIZE_BYTES) {
             setError("Thumbnail size exceeds the 5MB limit. Please select a smaller image.");
             return false;
           }
@@ -264,8 +265,8 @@ export default function UploadWizard() {
     } catch (err) {
       console.error("Upload Error:", err);
       let friendlyError = err?.message || "Upload failed. Please try again.";
-      if (friendlyError.includes("exceeds the 10MB limit")) {
-        friendlyError = "The selected document exceeds the 10MB limit. Please choose a smaller file.";
+      if (friendlyError.includes("exceeds the 50MB limit")) {
+        friendlyError = "The selected document exceeds the 50MB limit. Please choose a smaller file.";
       } else if (friendlyError.includes("exceeds the 5MB limit")) {
         friendlyError = "The selected thumbnail exceeds the 5MB limit. Please choose a smaller image.";
       } else if (friendlyError.includes("Unsupported file type") || friendlyError.includes("Unsupported file format")) {
@@ -662,7 +663,7 @@ export default function UploadWizard() {
                 <div>
                   <h3 className="text-lg font-semibold mb-2">Upload Your Document</h3>
                   <p className="text-sm text-gray-600 mb-4">
-                    Upload your lecture notes, projects, or study materials. Supported formats: PDF, DOCX, PPTX, ZIP (max 10MB).
+                    Upload your lecture notes, projects, or study materials. Supported formats: PDF, DOCX, PPTX, ZIP (max 50MB).
                   </p>
                 </div>
 
@@ -680,7 +681,7 @@ export default function UploadWizard() {
                       {docFileName || "Tap to Upload Document"}
                     </p>
                     <p className="text-sm text-gray-500 mb-4">
-                      {docFileName ? "Click to change file" : ".pdf, .docx, .pptx, .zip | 10MB max"}
+                      {docFileName ? "Click to change file" : ".pdf, .docx, .pptx, .zip | 50MB max"}
                     </p>
                     <button type="button" className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
                       Choose File

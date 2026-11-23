@@ -4,7 +4,7 @@
  * Behavioural differences with the canonical `/api/materials/upload` route, for
  * the record (issue #167):
  *   - Validation limits/types: this route allowed 50MB and video/mp4 + GIF;
- *     the canonical route enforces 10MB and the shared allowlist. Unifying
+ *     the canonical route enforces the shared limits and allowlist. Unifying
  *     validation in src/lib/ipfs/uploadValidator.js means this route now uses
  *     the canonical (stricter) policy too.
  *   - Pinning: this route pinned a metadata JSON and returned its gateway URL

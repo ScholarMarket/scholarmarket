@@ -448,12 +448,12 @@ export function validateUploadPayload(body) {
   return { title, description, price, usageRights, visibility };
 }
 
+import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE_BYTES } from "../materials/uploadLimits.js";
+
 export function validateUploadFileMetadata(file, field) {
   if (!file) {
     throw new ValidationError("No file provided", { field });
   }
-
-  const maxSize = 10 * 1024 * 1024;
 
   if (typeof file.size !== "number" || typeof file.type !== "string") {
     throw new ValidationError("Invalid file metadata: missing size or type", { field });
@@ -461,25 +461,14 @@ export function validateUploadFileMetadata(file, field) {
 
   const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
 
-  if (file.size > maxSize) {
+  if (file.size > MAX_FILE_SIZE_BYTES) {
     throw new ValidationError(
-      `File size ${sizeMB}MB exceeds 10MB limit`,
+      `File size ${sizeMB}MB exceeds ${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB limit`,
       { field }
     );
   }
 
-  const allowedTypes = [
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/vnd.ms-excel",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "application/vnd.ms-powerpoint",
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    "text/plain",
-    "application/zip",
-    "application/x-zip-compressed",
-  ];
+  const allowedTypes = ALLOWED_FILE_TYPES;
 
   if (!allowedTypes.includes(file.type)) {
     throw new ValidationError(
