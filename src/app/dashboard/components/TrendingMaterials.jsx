@@ -32,9 +32,11 @@ export default function TrendingMaterials() {
 						))}
 					</div>
 				}
-				renderData={(data) => (
+				renderData={(data) => {
+					const items = Array.isArray(data) ? data : data?.items || [];
+					return (
 					<div className="space-y-4">
-						{data.items?.slice(0, 3).map((item, i) => (
+						{items.slice(0, 3).map((item, i) => (
 							<Link
 								href={`/marketplace/${item._id}`}
 								key={item._id || i}
@@ -68,7 +70,8 @@ export default function TrendingMaterials() {
 							</Link>
 						))}
 					</div>
-				)}
+					);
+				}}
 			/>
 		</div>
 	);

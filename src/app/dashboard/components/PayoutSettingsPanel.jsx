@@ -34,14 +34,22 @@ export default function PayoutSettingsPanel({ initialUser }) {
     });
   }, [initialUser]);
 
+  const isValidStellarAddress = (value) => /^G[A-Z2-7]{55}$/.test(value);
+
   const onSubmit = async (event) => {
     event.preventDefault();
     setError(null);
     setSuccess(null);
 
+    const payoutWalletAddress = form.payoutWalletAddress.trim();
+    if (payoutWalletAddress && !isValidStellarAddress(payoutWalletAddress)) {
+      setError("Enter a valid Stellar wallet address (56 characters, starting with G).");
+      return;
+    }
+
     try {
       await updateProfile({
-        payoutWalletAddress: form.payoutWalletAddress.trim() || null,
+        payoutWalletAddress: payoutWalletAddress || null,
         preferredPayoutCurrency: form.preferredPayoutCurrency.trim() || null,
         payoutNotes: form.payoutNotes.trim() || null,
       });
